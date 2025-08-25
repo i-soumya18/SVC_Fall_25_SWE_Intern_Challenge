@@ -22,7 +22,10 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/social-qualify-form" element={<SocialQualifyForm />} />
-          <Route path="/companies/silicon-valley-consulting" element={<SiliconValleyConsulting />} />
+          <Route
+            path="/companies/silicon-valley-consulting"
+            element={<SiliconValleyConsulting />}
+          />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
