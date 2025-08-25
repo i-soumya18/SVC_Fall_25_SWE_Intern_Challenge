@@ -25,6 +25,7 @@ interface CurrencyRate {
 }
 
 export default function Index() {
+  const navigate = useNavigate();
   const [currency, setCurrency] = useState<CurrencyRate>({
     code: "USD",
     symbol: "$",
