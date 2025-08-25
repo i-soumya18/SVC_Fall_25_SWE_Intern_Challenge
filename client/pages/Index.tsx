@@ -110,8 +110,7 @@ export default function Index() {
   };
 
   const handleCTAClick = () => {
-    // Placeholder for CTA action
-    alert("Coming soon! We'll check if your accounts qualify for payments.");
+    navigate("/social-qualify-form");
   };
 
   return (
