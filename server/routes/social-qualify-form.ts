@@ -1,43 +1,80 @@
 import { RequestHandler } from "express";
-import { MongoClient, Db } from "mongodb";
+import { Pool } from "pg";
 import {
   SocialQualifyFormSchema,
   UserSchema,
   type SocialQualifyResponse,
-} from "@shared/schemas";
+} from "../../shared/schemas";
 
-let cachedDb: Db | null = null;
+let pool: Pool | null = null;
 
-// MongoDB connection
-async function connectToDatabase(): Promise<Db> {
-  if (cachedDb) {
-    return cachedDb;
+// PostgreSQL connection
+function getDatabase(): Pool {
+  console.log("[DB] Getting database connection...");
+
+  if (pool) {
+    console.log("[DB] Using existing connection pool");
+    return pool;
   }
 
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error("MONGODB_URI environment variable is not set");
+  const databaseUrl = process.env.DATABASE_URL;
+  console.log("[DB] Database URL configured:", databaseUrl ? "YES" : "NO");
+
+  if (!databaseUrl) {
+    console.error("[DB] DATABASE_URL environment variable is not set");
+    throw new Error("DATABASE_URL environment variable is not set");
   }
 
-  const client = new MongoClient(uri);
-  await client.connect();
-  const db = client.db("fairdatause");
-  cachedDb = db;
-  return db;
+  try {
+    console.log("[DB] Creating PostgreSQL connection pool...");
+    pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: {
+        rejectUnauthorized: false, // For Neon compatibility
+      },
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
+
+    console.log("[DB] PostgreSQL connection pool created successfully");
+    return pool;
+  } catch (error) {
+    console.error("[DB] Failed to create PostgreSQL connection pool:", error);
+    throw error;
+  }
 }
 
 // Reddit API integration
 async function verifyRedditAccount(username: string): Promise<boolean> {
+  console.log(`[REDDIT] Verifying Reddit account: ${username}`);
+
   try {
     const clientId = process.env.REDDIT_CLIENT_ID;
     const clientSecret = process.env.REDDIT_CLIENT_SECRET;
 
+    console.log("[REDDIT] Client ID configured:", clientId ? "YES" : "NO");
+    console.log(
+      "[REDDIT] Client Secret configured:",
+      clientSecret ? "YES" : "NO",
+    );
+
     if (!clientId || !clientSecret) {
-      console.error("Reddit API credentials not configured");
+      console.error("[REDDIT] ❌ REDDIT API CREDENTIALS NOT CONFIGURED ❌");
+      console.error(
+        "[REDDIT] Missing:",
+        !clientId ? "REDDIT_CLIENT_ID" : "",
+        !clientSecret ? "REDDIT_CLIENT_SECRET" : "",
+      );
+      console.error(
+        "[REDDIT] Reddit verification will fail for all users until credentials are set",
+      );
+      console.error("[REDDIT] See REDDIT_API_SETUP.md for instructions");
       return false;
     }
 
     // Get Reddit OAuth token
+    console.log("[REDDIT] Requesting OAuth token from Reddit...");
     const authResponse = await fetch(
       "https://www.reddit.com/api/v1/access_token",
       {
@@ -51,15 +88,19 @@ async function verifyRedditAccount(username: string): Promise<boolean> {
       },
     );
 
+    console.log("[REDDIT] OAuth response status:", authResponse.status);
     if (!authResponse.ok) {
-      console.error("Failed to get Reddit OAuth token");
+      const errorText = await authResponse.text();
+      console.error("[REDDIT] Failed to get Reddit OAuth token:", errorText);
       return false;
     }
 
     const authData = await authResponse.json();
     const accessToken = authData.access_token;
+    console.log("[REDDIT] OAuth token received:", accessToken ? "YES" : "NO");
 
     // Check if user exists
+    console.log(`[REDDIT] Checking if user '${username}' exists...`);
     const userResponse = await fetch(
       `https://oauth.reddit.com/user/${username}/about`,
       {
@@ -70,28 +111,61 @@ async function verifyRedditAccount(username: string): Promise<boolean> {
       },
     );
 
-    return userResponse.ok;
+    console.log(
+      `[REDDIT] User verification response status: ${userResponse.status}`,
+    );
+    const verified = userResponse.ok;
+    console.log(
+      `[REDDIT] User '${username}' verification result: ${verified ? "VERIFIED" : "NOT FOUND"}`,
+    );
+    return verified;
   } catch (error) {
-    console.error("Error verifying Reddit account:", error);
+    console.error(
+      `[REDDIT] Error verifying Reddit account '${username}':`,
+      error,
+    );
     return false;
   }
 }
 
 export const handleSocialQualifyForm: RequestHandler = async (req, res) => {
+  console.log(
+    "[API] ==================== SOCIAL QUALIFY FORM REQUEST ====================",
+  );
+  console.log("[API] Request method:", req.method);
+  console.log("[API] Request headers:", JSON.stringify(req.headers, null, 2));
+  console.log("[API] Request body:", JSON.stringify(req.body, null, 2));
+
+  const client = getDatabase();
+
   try {
+    console.log("[API] Validating request body with schema...");
     // Validate request body
     const validatedData = SocialQualifyFormSchema.parse(req.body);
-
-    // Connect to database
-    const db = await connectToDatabase();
-    const usersCollection = db.collection("users");
+    console.log(
+      "[API] Request body validation successful:",
+      JSON.stringify(validatedData, null, 2),
+    );
 
     // Check if user already exists (email + phone combination)
-    const existingUser = await usersCollection.findOne({
-      $and: [{ email: validatedData.email }, { phone: validatedData.phone }],
-    });
+    console.log(
+      `[API] Checking for existing user with email '${validatedData.email}' and phone '${validatedData.phone}'...`,
+    );
+    const existingUserQuery = `
+      SELECT id FROM users
+      WHERE email = $1 AND phone = $2
+    `;
+    const existingUserResult = await client.query(existingUserQuery, [
+      validatedData.email,
+      validatedData.phone,
+    ]);
+    console.log(
+      "[API] Existing user found:",
+      existingUserResult.rows.length > 0 ? "YES" : "NO",
+    );
 
-    if (existingUser) {
+    if (existingUserResult.rows.length > 0) {
+      console.log("[API] User already exists, returning 400 error");
       return res.status(400).json({
         success: false,
         message:
@@ -100,29 +174,45 @@ export const handleSocialQualifyForm: RequestHandler = async (req, res) => {
     }
 
     // Verify Reddit account
+    console.log("[API] Starting Reddit account verification...");
     const redditVerified = await verifyRedditAccount(
       validatedData.redditUsername,
     );
+    console.log(
+      `[API] Reddit verification completed. Verified: ${redditVerified}`,
+    );
 
-    // Create user document
-    const userData = {
-      ...validatedData,
+    // Save to database using SQL INSERT
+    console.log("[API] Saving user to database...");
+    const insertUserQuery = `
+      INSERT INTO users (email, phone, reddit_username, twitter_username, youtube_username, facebook_username, reddit_verified)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, created_at, updated_at
+    `;
+    const insertValues = [
+      validatedData.email,
+      validatedData.phone,
+      validatedData.redditUsername,
+      validatedData.twitterUsername || null,
+      validatedData.youtubeUsername || null,
+      validatedData.facebookUsername || null,
       redditVerified,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    ];
 
-    // Validate with schema
-    const userDoc = UserSchema.parse(userData);
+    const result = await client.query(insertUserQuery, insertValues);
+    console.log(
+      "[API] Database insert result:",
+      JSON.stringify(result.rows[0], null, 2),
+    );
 
-    // Save to database
-    const result = await usersCollection.insertOne(userDoc);
-
-    if (!result.acknowledged) {
+    if (result.rows.length === 0) {
+      console.error("[API] Database insert failed - no rows returned");
       throw new Error("Failed to save user to database");
     }
+    console.log("[API] User saved successfully with ID:", result.rows[0].id);
 
     // Always return "rejected" but offer side-gigs marketplace
+    console.log("[API] Preparing success response...");
     const response: SocialQualifyResponse = {
       success: true,
       message: "Application processed successfully",
@@ -135,22 +225,50 @@ export const handleSocialQualifyForm: RequestHandler = async (req, res) => {
         },
       },
     };
+    console.log("[API] Sending response:", JSON.stringify(response, null, 2));
 
     res.json(response);
+    console.log(
+      "[API] ==================== REQUEST COMPLETED SUCCESSFULLY ====================",
+    );
   } catch (error: any) {
-    console.error("Error processing social qualify form:", error);
+    console.error(
+      "[API] ==================== ERROR OCCURRED ====================",
+    );
+    console.error("[API] Error type:", error.constructor.name);
+    console.error("[API] Error message:", error.message);
+    console.error("[API] Error stack:", error.stack);
+    console.error(
+      "[API] Full error object:",
+      JSON.stringify(error, Object.getOwnPropertyNames(error), 2),
+    );
 
     if (error.issues) {
       // Zod validation errors
+      console.error(
+        "[API] Zod validation errors:",
+        JSON.stringify(error.issues, null, 2),
+      );
+      const errorMessage = error.issues
+        .map((issue: any) => issue.message)
+        .join(", ");
+      console.log(
+        "[API] Sending 400 response for validation errors:",
+        errorMessage,
+      );
       return res.status(400).json({
         success: false,
-        message: error.issues.map((issue: any) => issue.message).join(", "),
+        message: errorMessage,
       } as SocialQualifyResponse);
     }
 
+    console.log("[API] Sending 500 response for internal server error");
     res.status(500).json({
       success: false,
-      message: "An internal server error occurred",
+      message: `Internal server error: ${error.message}`,
     } as SocialQualifyResponse);
+    console.error(
+      "[API] ==================== REQUEST FAILED ====================",
+    );
   }
 };

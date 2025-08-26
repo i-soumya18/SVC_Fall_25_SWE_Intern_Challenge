@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,29 +10,152 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ExternalLink, CheckCircle, Clock } from "lucide-react";
+import { Loader2, ExternalLink, CheckCircle, Clock, AlertTriangle } from "lucide-react";
 import {
   ContractorRequestSchema,
   type ContractorRequest,
   type ContractorRequestResponse,
 } from "@shared/schemas";
+import { useAuth } from "@/hooks/useAuth";
+import { UserMenu } from "@/components/UserMenu";
+
+interface CurrencyRate {
+  code: string;
+  symbol: string;
+  rate: number;
+}
 
 export default function SiliconValleyConsulting() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [joinSlackRequested, setJoinSlackRequested] = useState(false);
   const [canStartJob, setCanStartJob] = useState(false);
   const [message, setMessage] = useState("");
+  const [currency, setCurrency] = useState<CurrencyRate>({
+    code: "USD",
+    symbol: "$",
+    rate: 1,
+  });
+  const [currencyLoading, setCurrencyLoading] = useState(true);
 
-  // Mock user email - in real app this would come from auth context
-  const userEmail = "user@example.com"; // This should come from user context/auth
+  useEffect(() => {
+    // Get user's location and currency based on IP with robust error handling
+    const detectCurrency = async () => {
+      try {
+        // First try to get location data with timeout
+        const locationController = new AbortController();
+        const locationTimeout = setTimeout(() => locationController.abort(), 3000);
+
+        const response = await fetch("https://ipapi.co/json/", {
+          signal: locationController.signal,
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
+
+        clearTimeout(locationTimeout);
+
+        if (!response.ok) {
+          throw new Error(`Location API responded with ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.currency && data.currency !== "USD") {
+          // Try to get exchange rate with timeout
+          const exchangeController = new AbortController();
+          const exchangeTimeout = setTimeout(() => exchangeController.abort(), 3000);
+
+          const exchangeResponse = await fetch(
+            `https://api.exchangerate-api.com/v4/latest/USD`,
+            {
+              signal: exchangeController.signal,
+              headers: {
+                'Accept': 'application/json',
+              }
+            }
+          );
+
+          clearTimeout(exchangeTimeout);
+
+          if (!exchangeResponse.ok) {
+            throw new Error(`Exchange API responded with ${exchangeResponse.status}`);
+          }
+
+          const exchangeData = await exchangeResponse.json();
+
+          if (exchangeData.rates && exchangeData.rates[data.currency]) {
+            const currencySymbols: { [key: string]: string } = {
+              EUR: "€",
+              GBP: "£",
+              JPY: "¥",
+              CAD: "C$",
+              AUD: "A$",
+              CHF: "Fr",
+              CNY: "¥",
+              INR: "₹",
+            };
+
+            setCurrency({
+              code: data.currency,
+              symbol: currencySymbols[data.currency] || data.currency,
+              rate: exchangeData.rates[data.currency],
+            });
+            console.log(`Currency detected: ${data.currency}`);
+          } else {
+            console.warn(`Exchange rate not available for ${data.currency}, using USD`);
+          }
+        } else {
+          console.log("Using default USD currency");
+        }
+      } catch (error) {
+        // Handle different types of errors gracefully
+        if (error.name === 'AbortError') {
+          console.warn("Currency detection timed out, using USD");
+        } else if (error instanceof TypeError && error.message.includes('NetworkError')) {
+          console.warn("Network error during currency detection, using USD");
+        } else {
+          console.warn("Currency detection failed:", error.message, "- using USD");
+        }
+
+        // Always fall back to USD on any error
+        setCurrency({
+          code: "USD",
+          symbol: "$",
+          rate: 1,
+        });
+      } finally {
+        setCurrencyLoading(false);
+      }
+    };
+
+    // Add a small delay to prevent immediate API calls on page load
+    const timer = setTimeout(detectCurrency, 500);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []);
+
+  const formatCurrency = (amount: number) => {
+    const converted = (amount * currency.rate).toFixed(2);
+    return `${currency.symbol}${converted}`;
+  };
 
   const handleJoinSlack = async () => {
+    // Check if user is authenticated
+    if (!user?.email) {
+      setMessage("Please sign in to join this company. Click the user menu in the top right to sign in.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
     try {
       const requestData: ContractorRequest = {
-        email: userEmail,
+        email: user.email,
         companySlug: "silicon-valley-consulting",
         companyName: "Silicon Valley Consulting",
       };
@@ -46,11 +170,31 @@ export default function SiliconValleyConsulting() {
         body: JSON.stringify(validatedData),
       });
 
-      const result: ContractorRequestResponse = await response.json();
-
+      // Check if response is OK first
       if (!response.ok) {
-        throw new Error(result.message || "Something went wrong");
+        // Try to parse JSON error message, fallback to status text
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMessage = errorData.message;
+
+            // Special handling for "User not found" error
+            if (errorData.message.includes("User not found") || errorData.message.includes("qualification form")) {
+              errorMessage = "You need to complete the qualification form first. Redirecting you there now...";
+              setTimeout(() => {
+                navigate("/social-qualify-form");
+              }, 3000);
+            }
+          }
+        } catch {
+          // If JSON parsing fails, use the default error message
+        }
+        throw new Error(errorMessage);
       }
+
+      // Only parse JSON if response is OK
+      const result: ContractorRequestResponse = await response.json();
 
       if (result.success) {
         setJoinSlackRequested(true);
@@ -81,14 +225,23 @@ export default function SiliconValleyConsulting() {
             </div>
             <span className="text-xl font-bold text-gray-900">FairDataUse</span>
           </div>
-          <nav className="hidden md:flex space-x-6">
-            <a
-              href="/"
-              className="text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              ← Back to Home
-            </a>
-          </nav>
+          <div className="flex items-center space-x-6">
+            <nav className="hidden md:flex space-x-6">
+              <a
+                href="/marketplace"
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                ← Back to Marketplace
+              </a>
+              <a
+                href="/marketplace"
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Browse Companies
+              </a>
+            </nav>
+            <UserMenu />
+          </div>
         </div>
       </header>
 
@@ -129,12 +282,19 @@ export default function SiliconValleyConsulting() {
             <CardContent>
               <div className="text-center">
                 <div className="text-3xl font-bold text-green-600 mb-2">
-                  $2.00 per hour + $500 performance bonus
+                  {currencyLoading
+                    ? "$--/hour + $--- bonus"
+                    : `${formatCurrency(2.00)}/hour + ${formatCurrency(500)} performance bonus`}
                 </div>
                 <p className="text-green-700">
                   Competitive hourly rate with significant performance
                   incentives
                 </p>
+                {currency.code !== "USD" && !currencyLoading && (
+                  <p className="text-sm text-green-600 mt-2">
+                    Prices shown in {currency.code} (converted from USD)
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -144,7 +304,7 @@ export default function SiliconValleyConsulting() {
             <CardHeader>
               <CardTitle>Current Tasks</CardTitle>
               <CardDescription>
-                What you'll be doing for our clients
+                What you'll be doing for Silicon Valley Consulting
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -280,9 +440,29 @@ export default function SiliconValleyConsulting() {
             </CardContent>
           </Card>
 
+          {/* Authentication Status */}
+          {!user?.email && (
+            <Alert className="mb-6 border-orange-200 bg-orange-50">
+              <AlertTriangle className="h-4 w-4 text-orange-600" />
+              <AlertDescription className="text-orange-800">
+                <strong>Sign in required:</strong> You need to be signed in to join this company.
+                Click the user menu in the top right corner to sign in with your email.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {user?.email && (
+            <Alert className="mb-6 border-green-200 bg-green-50">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-800">
+                <strong>Signed in as:</strong> {user.email}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Messages */}
           {message && (
-            <Alert className="mb-6">
+            <Alert className={`mb-6 ${message.includes("Redirecting") ? "border-blue-200 bg-blue-50" : ""}`}>
               <AlertDescription>{message}</AlertDescription>
             </Alert>
           )}
@@ -324,10 +504,17 @@ export default function SiliconValleyConsulting() {
                     </>
                   ) : joinSlackRequested ? (
                     "Request Sent ✓"
+                  ) : !user?.email ? (
+                    "Sign In to Join Slack"
                   ) : (
                     "Join Slack"
                   )}
                 </Button>
+                {!user?.email && (
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    You must be signed in to request Slack access
+                  </p>
+                )}
               </CardContent>
             </Card>
 

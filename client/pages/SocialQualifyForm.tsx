@@ -17,9 +17,11 @@ import {
   type SocialQualifyResponse,
 } from "@shared/schemas";
 import { Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function SocialQualifyForm() {
   const navigate = useNavigate();
+  const { signInWithMagicLink } = useAuth();
   const [formData, setFormData] = useState<SocialQualifyForm>({
     email: "",
     phone: "",
@@ -32,6 +34,7 @@ export default function SocialQualifyForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [matchedCompany, setMatchedCompany] = useState<any>(null);
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +45,17 @@ export default function SocialQualifyForm() {
       // Validate form data
       const validatedData = SocialQualifyFormSchema.parse(formData);
 
-      // Submit to API
+      // Step 1: Create Supabase user and send magic link
+      console.log("Creating Supabase user and sending magic link...");
+      const { error: authError } = await signInWithMagicLink(validatedData.email);
+
+      if (authError) {
+        throw new Error(`Authentication error: ${authError.message}`);
+      }
+
+      console.log("Magic link sent successfully, now saving to database...");
+
+      // Step 2: Submit to API to save data in Neon database
       const response = await fetch("/api/social-qualify-form", {
         method: "POST",
         headers: {
@@ -51,14 +64,25 @@ export default function SocialQualifyForm() {
         body: JSON.stringify(validatedData),
       });
 
-      const result: SocialQualifyResponse = await response.json();
-
+      // Check if response is OK first
       if (!response.ok) {
-        throw new Error(result.message || "Something went wrong");
+        // Try to parse JSON error message, fallback to status text
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // If JSON parsing fails, use the default error message
+        }
+        throw new Error(errorMessage);
       }
+
+      // Only parse JSON if response is OK
+      const result: SocialQualifyResponse = await response.json();
 
       if (result.success) {
         setSuccess(true);
+        setMagicLinkSent(true);
         setMatchedCompany(result.data?.matchedCompany);
       }
     } catch (err: any) {
@@ -105,6 +129,15 @@ export default function SocialQualifyForm() {
 
         <div className="container mx-auto px-4 py-16">
           <div className="max-w-2xl mx-auto text-center">
+            {magicLinkSent && (
+              <Alert className="mb-8 border-blue-200 bg-blue-50">
+                <AlertDescription className="text-blue-800">
+                  📧 <strong>Check your email!</strong> We've sent you a magic link to sign in.
+                  Click the link in your email to access your account and manage your opportunities.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="mb-8">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-red-600 text-2xl">❌</span>
