@@ -65,10 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signInWithMagicLink = async (email: string) => {
+    // Use environment variable for site URL or fall back to current origin
+    const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin
+    
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}`,
+        emailRedirectTo: siteUrl,
       },
     })
     return { error }
