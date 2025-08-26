@@ -128,6 +128,49 @@ async function verifyRedditAccount(username: string): Promise<boolean> {
   }
 }
 
+// Check if user already exists (separate endpoint)
+export const handleCheckUserExists: RequestHandler = async (req, res) => {
+  console.log("[API] ==================== CHECK USER EXISTS REQUEST ====================");
+  console.log("[API] Request body:", JSON.stringify(req.body, null, 2));
+
+  const client = getDatabase();
+
+  try {
+    const { email, phone } = req.body;
+
+    if (!email || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and phone are required",
+      });
+    }
+
+    // Check if user already exists (email + phone combination)
+    console.log(`[API] Checking for existing user with email '${email}' and phone '${phone}'...`);
+    const existingUserQuery = `
+      SELECT id FROM users
+      WHERE email = $1 AND phone = $2
+    `;
+    const existingUserResult = await client.query(existingUserQuery, [email, phone]);
+    
+    const userExists = existingUserResult.rows.length > 0;
+    console.log("[API] User exists:", userExists ? "YES" : "NO");
+
+    res.json({
+      success: true,
+      userExists,
+    });
+
+    console.log("[API] ==================== CHECK USER EXISTS COMPLETED ====================");
+  } catch (error: any) {
+    console.error("[API] Error checking user existence:", error);
+    res.status(500).json({
+      success: false,
+      message: `Internal server error: ${error.message}`,
+    });
+  }
+};
+
 export const handleSocialQualifyForm: RequestHandler = async (req, res) => {
   console.log(
     "[API] ==================== SOCIAL QUALIFY FORM REQUEST ====================",

@@ -69,3 +69,9 @@ export interface ContractorRequestResponse {
   success: boolean;
   message: string;
 }
+
+export interface CheckUserExistsResponse {
+  success: boolean;
+  userExists: boolean;
+  message?: string;
+}

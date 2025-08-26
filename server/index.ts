@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
-import { handleSocialQualifyForm } from "./routes/social-qualify-form";
+import { handleSocialQualifyForm, handleCheckUserExists } from "./routes/social-qualify-form";
 import { handleContractorRequest } from "./routes/contractor-request";
 
 // Log environment configuration at startup
@@ -47,6 +47,7 @@ export function createServer() {
   app.get("/api/demo", handleDemo);
 
   // FairDataUse API routes
+  app.post("/api/check-user-exists", handleCheckUserExists);
   app.post("/api/social-qualify-form", handleSocialQualifyForm);
   app.post("/api/contractor-request", handleContractorRequest);
 

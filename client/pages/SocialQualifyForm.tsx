@@ -15,6 +15,7 @@ import {
   SocialQualifyFormSchema,
   type SocialQualifyForm,
   type SocialQualifyResponse,
+  type CheckUserExistsResponse,
 } from "@shared/schemas";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -45,7 +46,30 @@ export default function SocialQualifyForm() {
       // Validate form data
       const validatedData = SocialQualifyFormSchema.parse(formData);
 
-      // Step 1: Create Supabase user and send magic link
+      // Step 1: Check if user already exists
+      console.log("Checking if user already exists...");
+      const checkResponse = await fetch("/api/check-user-exists", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: validatedData.email,
+          phone: validatedData.phone,
+        }),
+      });
+
+      if (!checkResponse.ok) {
+        const errorData = await checkResponse.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to check user existence");
+      }
+
+      const checkResult: CheckUserExistsResponse = await checkResponse.json();
+      if (checkResult.userExists) {
+        throw new Error("You have already signed up with this email and phone number combination. Please check your email for the magic link or contact support if you need assistance.");
+      }
+
+      // Step 2: Create Supabase user and send magic link
       console.log("Creating Supabase user and sending magic link...");
       const { error: authError } = await signInWithMagicLink(validatedData.email);
 
@@ -55,7 +79,7 @@ export default function SocialQualifyForm() {
 
       console.log("Magic link sent successfully, now saving to database...");
 
-      // Step 2: Submit to API to save data in Neon database
+      // Step 3: Submit to API to save data in Neon database
       const response = await fetch("/api/social-qualify-form", {
         method: "POST",
         headers: {
