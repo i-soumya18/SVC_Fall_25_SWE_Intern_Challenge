@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { UserMenu } from "@/components/UserMenu";
 
 interface PlatformData {
   name: string;
@@ -62,20 +63,52 @@ export default function Index() {
   ];
 
   useEffect(() => {
-    // Get user's location and currency based on IP
+    // Get user's location and currency based on IP with robust error handling
     const detectCurrency = async () => {
       try {
-        const response = await fetch("https://ipapi.co/json/");
+        // First try to get location data with timeout
+        const locationController = new AbortController();
+        const locationTimeout = setTimeout(() => locationController.abort(), 3000);
+
+        const response = await fetch("https://ipapi.co/json/", {
+          signal: locationController.signal,
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
+
+        clearTimeout(locationTimeout);
+
+        if (!response.ok) {
+          throw new Error(`Location API responded with ${response.status}`);
+        }
+
         const data = await response.json();
 
         if (data.currency && data.currency !== "USD") {
-          // Get exchange rate for user's currency
+          // Try to get exchange rate with timeout
+          const exchangeController = new AbortController();
+          const exchangeTimeout = setTimeout(() => exchangeController.abort(), 3000);
+
           const exchangeResponse = await fetch(
             `https://api.exchangerate-api.com/v4/latest/USD`,
+            {
+              signal: exchangeController.signal,
+              headers: {
+                'Accept': 'application/json',
+              }
+            }
           );
+
+          clearTimeout(exchangeTimeout);
+
+          if (!exchangeResponse.ok) {
+            throw new Error(`Exchange API responded with ${exchangeResponse.status}`);
+          }
+
           const exchangeData = await exchangeResponse.json();
 
-          if (exchangeData.rates[data.currency]) {
+          if (exchangeData.rates && exchangeData.rates[data.currency]) {
             const currencySymbols: { [key: string]: string } = {
               EUR: "€",
               GBP: "£",
@@ -92,16 +125,40 @@ export default function Index() {
               symbol: currencySymbols[data.currency] || data.currency,
               rate: exchangeData.rates[data.currency],
             });
+            console.log(`Currency detected: ${data.currency}`);
+          } else {
+            console.warn(`Exchange rate not available for ${data.currency}, using USD`);
           }
+        } else {
+          console.log("Using default USD currency");
         }
       } catch (error) {
-        console.error("Error detecting currency:", error);
+        // Handle different types of errors gracefully
+        if (error.name === 'AbortError') {
+          console.warn("Currency detection timed out, using USD");
+        } else if (error instanceof TypeError && error.message.includes('NetworkError')) {
+          console.warn("Network error during currency detection, using USD");
+        } else {
+          console.warn("Currency detection failed:", error.message, "- using USD");
+        }
+
+        // Always fall back to USD on any error
+        setCurrency({
+          code: "USD",
+          symbol: "$",
+          rate: 1,
+        });
       } finally {
         setLoading(false);
       }
     };
 
-    detectCurrency();
+    // Add a small delay to prevent immediate API calls on page load
+    const timer = setTimeout(detectCurrency, 500);
+
+    return () => {
+      clearTimeout(timer);
+    };
   }, []);
 
   const formatCurrency = (amount: number) => {
@@ -111,6 +168,16 @@ export default function Index() {
 
   const handleCTAClick = () => {
     navigate("/social-qualify-form");
+  };
+
+  const handleLearnMoreClick = () => {
+    const platformsSection = document.getElementById("platforms");
+    if (platformsSection) {
+      platformsSection.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
   };
 
   return (
@@ -124,26 +191,35 @@ export default function Index() {
             </div>
             <span className="text-xl font-bold text-gray-900">FairDataUse</span>
           </div>
-          <nav className="hidden md:flex space-x-6">
-            <a
-              href="#how-it-works"
-              className="text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              How it works
-            </a>
-            <a
-              href="#platforms"
-              className="text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              Platforms
-            </a>
-            <a
-              href="#faq"
-              className="text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              FAQ
-            </a>
-          </nav>
+          <div className="flex items-center space-x-6">
+            <nav className="hidden md:flex space-x-6">
+              <a
+                href="#how-it-works"
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                How it works
+              </a>
+              <a
+                href="#platforms"
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Platforms
+              </a>
+              <a
+                href="/marketplace"
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Companies
+              </a>
+              <a
+                href="#faq"
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                FAQ
+              </a>
+            </nav>
+            <UserMenu />
+          </div>
         </div>
       </header>
 
@@ -169,7 +245,12 @@ export default function Index() {
             >
               See if your accounts qualify
             </Button>
-            <Button variant="outline" size="lg" className="px-8 py-3 text-lg">
+            <Button
+              variant="outline"
+              size="lg"
+              className="px-8 py-3 text-lg"
+              onClick={handleLearnMoreClick}
+            >
               Learn More
             </Button>
           </div>

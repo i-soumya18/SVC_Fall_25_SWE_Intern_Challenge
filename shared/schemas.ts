@@ -1,32 +1,34 @@
 import { z } from "zod";
 
-// User schema for social qualification form
+// User schema for PostgreSQL
 export const UserSchema = z.object({
+  id: z.number().optional(), // Auto-increment primary key
   email: z.string().email(),
   phone: z.string().min(10, "Phone number must be at least 10 digits"),
-  redditUsername: z.string().min(1, "Reddit username is required"),
-  twitterUsername: z.string().optional(),
-  youtubeUsername: z.string().optional(),
-  facebookUsername: z.string().optional(),
-  redditVerified: z.boolean().default(false),
-  createdAt: z.date().default(() => new Date()),
-  updatedAt: z.date().default(() => new Date()),
+  reddit_username: z.string().min(1, "Reddit username is required"),
+  twitter_username: z.string().optional(),
+  youtube_username: z.string().optional(),
+  facebook_username: z.string().optional(),
+  reddit_verified: z.boolean().default(false),
+  created_at: z.date().optional(), // Will be set by database
+  updated_at: z.date().optional(), // Will be set by database
 });
 
-// Contractor request schema
+// Contractor request schema for PostgreSQL
 export const ContractorSchema = z.object({
-  userId: z.string(), // Reference to User
+  id: z.number().optional(), // Auto-increment primary key
+  user_id: z.number(), // Reference to User ID
   email: z.string().email(),
-  companySlug: z.string(),
-  companyName: z.string(),
+  company_slug: z.string(),
+  company_name: z.string(),
   status: z.enum(["pending", "accepted", "rejected"]).default("pending"),
-  joinedSlack: z.boolean().default(false),
-  canStartJob: z.boolean().default(false),
-  createdAt: z.date().default(() => new Date()),
-  updatedAt: z.date().default(() => new Date()),
+  joined_slack: z.boolean().default(false),
+  can_start_job: z.boolean().default(false),
+  created_at: z.date().optional(), // Will be set by database
+  updated_at: z.date().optional(), // Will be set by database
 });
 
-// Form validation schemas
+// Form validation schemas (keeping camelCase for frontend)
 export const SocialQualifyFormSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   phone: z.string().min(10, "Phone number must be at least 10 digits"),

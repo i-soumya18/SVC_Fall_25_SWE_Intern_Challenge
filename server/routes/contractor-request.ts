@@ -1,45 +1,72 @@
 import { RequestHandler } from "express";
-import { MongoClient, Db } from "mongodb";
+import { Pool } from "pg";
 import {
   ContractorRequestSchema,
   ContractorSchema,
   type ContractorRequestResponse,
-} from "@shared/schemas";
+} from "../../shared/schemas";
 
-let cachedDb: Db | null = null;
+let pool: Pool | null = null;
 
-// MongoDB connection
-async function connectToDatabase(): Promise<Db> {
-  if (cachedDb) {
-    return cachedDb;
+// PostgreSQL connection
+function getDatabase(): Pool {
+  console.log("[DB] Getting database connection...");
+
+  if (pool) {
+    console.log("[DB] Using existing connection pool");
+    return pool;
   }
 
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error("MONGODB_URI environment variable is not set");
+  const databaseUrl = process.env.DATABASE_URL;
+  console.log("[DB] Database URL configured:", databaseUrl ? "YES" : "NO");
+
+  if (!databaseUrl) {
+    console.error("[DB] DATABASE_URL environment variable is not set");
+    throw new Error("DATABASE_URL environment variable is not set");
   }
 
-  const client = new MongoClient(uri);
-  await client.connect();
-  const db = client.db("fairdatause");
-  cachedDb = db;
-  return db;
+  try {
+    console.log("[DB] Creating PostgreSQL connection pool...");
+    pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: {
+        rejectUnauthorized: false // For Neon compatibility
+      },
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
+
+    console.log("[DB] PostgreSQL connection pool created successfully");
+    return pool;
+  } catch (error) {
+    console.error("[DB] Failed to create PostgreSQL connection pool:", error);
+    throw error;
+  }
 }
 
 export const handleContractorRequest: RequestHandler = async (req, res) => {
+  console.log("[API] ==================== CONTRACTOR REQUEST ====================");
+  console.log("[API] Request method:", req.method);
+  console.log("[API] Request headers:", JSON.stringify(req.headers, null, 2));
+  console.log("[API] Request body:", JSON.stringify(req.body, null, 2));
+
+  const client = getDatabase();
+
   try {
+    console.log("[API] Validating request body with schema...");
     // Validate request body
     const validatedData = ContractorRequestSchema.parse(req.body);
-
-    // Connect to database
-    const db = await connectToDatabase();
-    const contractorsCollection = db.collection("contractors");
-    const usersCollection = db.collection("users");
+    console.log("[API] Request body validation successful:", JSON.stringify(validatedData, null, 2));
 
     // Find the user by email
-    const user = await usersCollection.findOne({ email: validatedData.email });
+    console.log(`[API] Looking for user with email: ${validatedData.email}`);
+    const userQuery = `SELECT id, email FROM users WHERE email = $1`;
+    const userResult = await client.query(userQuery, [validatedData.email]);
+    console.log("[API] User found:", userResult.rows.length > 0 ? "YES" : "NO");
 
-    if (!user) {
+    if (userResult.rows.length === 0) {
+      console.log("[API] User not found, returning 404 error");
       return res.status(404).json({
         success: false,
         message:
@@ -47,13 +74,20 @@ export const handleContractorRequest: RequestHandler = async (req, res) => {
       } as ContractorRequestResponse);
     }
 
-    // Check if contractor request already exists for this user and company
-    const existingContractor = await contractorsCollection.findOne({
-      userId: user._id.toString(),
-      companySlug: validatedData.companySlug,
-    });
+    const user = userResult.rows[0];
+    console.log("[API] User details:", JSON.stringify({ id: user.id, email: user.email }, null, 2));
 
-    if (existingContractor) {
+    // Check if contractor request already exists for this user and company
+    console.log(`[API] Checking for existing contractor request for user ${user.id} and company ${validatedData.companySlug}`);
+    const existingContractorQuery = `
+      SELECT id FROM contractors
+      WHERE user_id = $1 AND company_slug = $2
+    `;
+    const existingContractorResult = await client.query(existingContractorQuery, [user.id, validatedData.companySlug]);
+    console.log("[API] Existing contractor request found:", existingContractorResult.rows.length > 0 ? "YES" : "NO");
+
+    if (existingContractorResult.rows.length > 0) {
+      console.log("[API] Contractor request already exists, returning 400 error");
       return res.status(400).json({
         success: false,
         message:
@@ -61,55 +95,71 @@ export const handleContractorRequest: RequestHandler = async (req, res) => {
       } as ContractorRequestResponse);
     }
 
-    // Create contractor request document
-    const contractorData = {
-      userId: user._id.toString(),
-      email: validatedData.email,
-      companySlug: validatedData.companySlug,
-      companyName: validatedData.companyName,
-      status: "pending" as const,
-      joinedSlack: true, // Set to true since they clicked join
-      canStartJob: false, // Will be set to true when company approves
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    // Save contractor request to database using SQL INSERT
+    console.log("[API] Saving contractor request to database...");
+    const insertContractorQuery = `
+      INSERT INTO contractors (user_id, email, company_slug, company_name, status, joined_slack, can_start_job)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, created_at, updated_at
+    `;
+    const insertValues = [
+      user.id,
+      validatedData.email,
+      validatedData.companySlug,
+      validatedData.companyName,
+      "pending",
+      true, // Set to true since they clicked join
+      false  // Will be set to true when company approves
+    ];
 
-    // Validate with schema
-    const contractorDoc = ContractorSchema.parse(contractorData);
+    const result = await client.query(insertContractorQuery, insertValues);
+    console.log("[API] Database insert result:", JSON.stringify(result.rows[0], null, 2));
 
-    // Save to database
-    const result = await contractorsCollection.insertOne(contractorDoc);
-
-    if (!result.acknowledged) {
+    if (result.rows.length === 0) {
+      console.error("[API] Database insert failed - no rows returned");
       throw new Error("Failed to save contractor request to database");
     }
+    console.log("[API] Contractor request saved successfully with ID:", result.rows[0].id);
 
     // TODO: In a real app, you would also:
     // 1. Send an email to the company notifying them of the new contractor request
     // 2. Send a confirmation email to the user
     // 3. Add the request to a queue for processing
+    console.log("[API] TODO: Email notifications would be sent here");
 
+    console.log("[API] Preparing success response...");
     const response: ContractorRequestResponse = {
       success: true,
       message:
         "We've just pinged them. You'll be sent an email and text invite within 72 hours.",
     };
+    console.log("[API] Sending response:", JSON.stringify(response, null, 2));
 
     res.json(response);
+    console.log("[API] ==================== REQUEST COMPLETED SUCCESSFULLY ====================");
   } catch (error: any) {
-    console.error("Error processing contractor request:", error);
+    console.error("[API] ==================== ERROR OCCURRED ====================");
+    console.error("[API] Error type:", error.constructor.name);
+    console.error("[API] Error message:", error.message);
+    console.error("[API] Error stack:", error.stack);
+    console.error("[API] Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
 
     if (error.issues) {
       // Zod validation errors
+      console.error("[API] Zod validation errors:", JSON.stringify(error.issues, null, 2));
+      const errorMessage = error.issues.map((issue: any) => issue.message).join(", ");
+      console.log("[API] Sending 400 response for validation errors:", errorMessage);
       return res.status(400).json({
         success: false,
-        message: error.issues.map((issue: any) => issue.message).join(", "),
+        message: errorMessage,
       } as ContractorRequestResponse);
     }
 
+    console.log("[API] Sending 500 response for internal server error");
     res.status(500).json({
       success: false,
-      message: "An internal server error occurred",
+      message: `Internal server error: ${error.message}`,
     } as ContractorRequestResponse);
+    console.error("[API] ==================== REQUEST FAILED ====================");
   }
 };
