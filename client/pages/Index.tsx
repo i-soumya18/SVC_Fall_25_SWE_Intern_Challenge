@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { UserMenu } from "@/components/UserMenu";
+import { useAuth } from "@/hooks/useAuth";
 
 interface PlatformData {
   name: string;
@@ -27,6 +28,7 @@ interface CurrencyRate {
 
 export default function Index() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [currency, setCurrency] = useState<CurrencyRate>({
     code: "USD",
     symbol: "$",
@@ -205,18 +207,14 @@ export default function Index() {
               >
                 Platforms
               </a>
-              <a
-                href="/marketplace"
-                className="text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                Companies
-              </a>
-              <a
-                href="#faq"
-                className="text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                FAQ
-              </a>
+              {user && (
+                <a
+                  href="/marketplace"
+                  className="text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                  Companies
+                </a>
+              )}
             </nav>
             <UserMenu />
           </div>

@@ -182,6 +182,15 @@ export const handleSocialQualifyForm: RequestHandler = async (req, res) => {
       `[API] Reddit verification completed. Verified: ${redditVerified}`,
     );
 
+    // Return error if Reddit account doesn't exist
+    if (!redditVerified) {
+      console.log("[API] Reddit account not found, returning 400 error");
+      return res.status(400).json({
+        success: false,
+        message: `Reddit user '${validatedData.redditUsername}' does not exist. Please check the username and try again.`,
+      } as SocialQualifyResponse);
+    }
+
     // Save to database using SQL INSERT
     console.log("[API] Saving user to database...");
     const insertUserQuery = `
