@@ -48,15 +48,18 @@ export default function SocialQualifyForm() {
 
       // Step 1: Check if user already exists
       console.log("Checking if user already exists...");
+      const requestBody = {
+        email: validatedData.email,
+        phone: validatedData.phone,
+      };
+      console.log("Sending request body:", requestBody);
+      
       const checkResponse = await fetch("/api/check-user-exists", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          email: validatedData.email,
-          phone: validatedData.phone,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!checkResponse.ok) {

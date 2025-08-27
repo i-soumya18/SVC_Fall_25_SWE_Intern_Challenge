@@ -136,9 +136,45 @@ export const handleCheckUserExists: RequestHandler = async (req, res) => {
   const client = getDatabase();
 
   try {
-    const { email, phone } = req.body;
+    // Handle case where body is a Buffer (serverless function issue)
+    let parsedBody = req.body;
+    console.log("[API] Raw req.body type:", typeof req.body);
+    console.log("[API] Is Buffer:", Buffer.isBuffer(req.body));
+    
+    if (Buffer.isBuffer(req.body)) {
+      console.log("[API] Body is Buffer, converting to string and parsing JSON");
+      const bodyString = req.body.toString('utf8');
+      console.log("[API] Body string:", bodyString);
+      try {
+        parsedBody = JSON.parse(bodyString);
+        console.log("[API] Successfully parsed JSON from buffer:", parsedBody);
+      } catch (parseError) {
+        console.error("[API] Failed to parse JSON from buffer:", parseError);
+        return res.status(400).json({
+          success: false,
+          message: "Invalid JSON in request body",
+        });
+      }
+    } else if (typeof req.body === 'string') {
+      console.log("[API] Body is string, parsing JSON");
+      try {
+        parsedBody = JSON.parse(req.body);
+        console.log("[API] Successfully parsed JSON from string:", parsedBody);
+      } catch (parseError) {
+        console.error("[API] Failed to parse JSON from string:", parseError);
+        return res.status(400).json({
+          success: false,
+          message: "Invalid JSON in request body",
+        });
+      }
+    }
+    
+    const { email, phone } = parsedBody;
+    console.log("[API] Extracted email:", email);
+    console.log("[API] Extracted phone:", phone);
 
     if (!email || !phone) {
+      console.log("[API] Missing email or phone - email:", !!email, "phone:", !!phone);
       return res.status(400).json({
         success: false,
         message: "Email and phone are required",
