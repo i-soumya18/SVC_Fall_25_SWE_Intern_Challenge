@@ -299,10 +299,34 @@ export default function SiliconValleyConsulting() {
             </CardContent>
           </Card>
 
+          {/* Info Section */}
+          <div className="mt-16 bg-blue-50 rounded-lg p-8 border border-blue-200">
+            <div className="text-center max-w-4xl mx-auto">
+              <AlertTriangle className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+              <h3 className="text-2xl font-bold text-blue-900 mb-4">
+                How Our Marketplace Works
+              </h3>
+              <div className="space-y-4 text-blue-800">
+                <p>
+                  <strong>Step 1:</strong> Complete your first assignment with Silicon Valley Consulting to establish your reputation and work quality.
+                </p>
+                <p>
+                  <strong>Step 2:</strong> Receive a positive review (4+ stars) from your initial company to unlock additional opportunities.
+                </p>
+                <p>
+                  <strong>Step 3:</strong> Browse and apply to work with multiple companies simultaneously, increasing your earning potential.
+                </p>
+                <p className="text-sm">
+                  This system ensures high-quality contractors and helps companies find reliable talent through proven track records.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Current Tasks */}
           <Card className="mb-8">
             <CardHeader>
-              <CardTitle>Current Tasks</CardTitle>
+              <CardTitle>Part-time Tasks</CardTitle>
               <CardDescription>
                 What you'll be doing for Silicon Valley Consulting
               </CardDescription>
@@ -316,7 +340,7 @@ export default function SiliconValleyConsulting() {
                       Reddit Community Engagement
                     </h4>
                     <p className="text-gray-600">
-                      Role play as authentic users for our clients to help them
+                      Role play as authentic users of SVC's clients to help their clients
                       grow their subreddit communities organically.
                     </p>
                   </div>
@@ -352,7 +376,7 @@ export default function SiliconValleyConsulting() {
           {/* How It Works */}
           <Card className="mb-8">
             <CardHeader>
-              <CardTitle>How It Works</CardTitle>
+              <CardTitle>Onboarding & Payment Process</CardTitle>
               <CardDescription>
                 Step-by-step process to get started
               </CardDescription>
@@ -368,8 +392,8 @@ export default function SiliconValleyConsulting() {
                       Join Company Slack
                     </h4>
                     <p className="text-gray-600">
-                      Click the "Join Slack" button below. We'll contact the
-                      company to get an invite link sent to you within 72 hours.
+                      Click the "Join Slack" button below. We'll contact
+                      Silicon Valley Consulting to get an invite link sent to you within 72 hours.
                     </p>
                   </div>
                 </div>

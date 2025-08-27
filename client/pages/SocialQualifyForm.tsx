@@ -19,10 +19,12 @@ import {
 } from "@shared/schemas";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useCurrency } from "@/hooks/useCurrency";
 
 export default function SocialQualifyForm() {
   const navigate = useNavigate();
   const { signInWithMagicLink } = useAuth();
+  const { currency, currencyLoading, formatCurrency } = useCurrency();
   const [formData, setFormData] = useState<SocialQualifyForm>({
     email: "",
     phone: "",
@@ -202,11 +204,11 @@ export default function SocialQualifyForm() {
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-gray-50 rounded-lg p-4">
                       <div>
                         <span className="font-semibold text-green-600">
-                          {matchedCompany.payRate}
+                          {currencyLoading ? "$2.00" : formatCurrency(2.00)} per hour
                         </span>
                         <span className="text-gray-600"> + </span>
                         <span className="font-semibold text-green-600">
-                          {matchedCompany.bonus}
+                          {currencyLoading ? "$500" : formatCurrency(500)}
                         </span>
                         <span className="text-gray-600">
                           {" "}
@@ -214,6 +216,11 @@ export default function SocialQualifyForm() {
                         </span>
                       </div>
                     </div>
+                    {currency.code !== "USD" && !currencyLoading && (
+                      <p className="text-sm text-green-600 mt-3">
+                        Prices shown in {currency.code} (converted from USD)
+                      </p>
+                    )}
                   </div>
                 </div>
                 <Button
