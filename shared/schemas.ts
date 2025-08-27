@@ -40,8 +40,8 @@ export const SocialQualifyFormSchema = z.object({
 
 export const ContractorRequestSchema = z.object({
   email: z.string().email(),
-  companySlug: z.string(),
-  companyName: z.string(),
+  companySlug: z.string().min(1, "Company slug is required"),
+  companyName: z.string().min(1, "Company name is required"),
 });
 
 // TypeScript types

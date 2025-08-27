@@ -2,38 +2,40 @@ import { beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { Pool } from "pg";
 import { setupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
+import { 
+  createTestPool, 
+  getTestDatabaseUrl, 
+  setupTestDatabase, 
+  verifyTestDatabase,
+  cleanupTestData as cleanupTestDataUtil,
+  ensureDatabaseEnvironment
+} from "./test-db-setup";
 
 // Test database configuration
 let testPool: Pool | null = null;
+let databaseInitialized = false;
 
 export function getTestDatabase(): Pool {
   if (testPool) {
     return testPool;
   }
 
-  // Use a test database URL or fallback to the main one with a test schema
-  const testDatabaseUrl =
-    process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
-
-  if (!testDatabaseUrl) {
+  try {
+    const testDatabaseUrl = getTestDatabaseUrl();
+    console.log('🔧 Connecting to test database...');
+    testPool = createTestPool(testDatabaseUrl);
+    
+    // Log the database being used (without credentials)
+    const urlObj = new URL(testDatabaseUrl);
+    console.log(`📊 Test database: ${urlObj.host}${urlObj.pathname}`);
+    
+    return testPool;
+  } catch (error) {
+    console.error('❌ Failed to create test database pool:', error);
     throw new Error(
-      "Neither TEST_DATABASE_URL nor DATABASE_URL is set for testing",
+      'Failed to connect to test database. See test setup documentation for local database setup.'
     );
   }
-
-  testPool = new Pool({
-    connectionString: testDatabaseUrl,
-    ssl: testDatabaseUrl.includes("neon.tech")
-      ? {
-          rejectUnauthorized: false,
-        }
-      : undefined,
-    max: 5, // Smaller pool for tests
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 5000,
-  });
-
-  return testPool;
 }
 
 // Mock server for external API calls
@@ -73,9 +75,7 @@ export const mockServer = setupServer(
 export async function cleanupTestData() {
   const db = getTestDatabase();
   try {
-    // Clean up in reverse order of dependencies
-    await db.query("DELETE FROM contractors WHERE email LIKE $1", ["%test%"]);
-    await db.query("DELETE FROM users WHERE email LIKE $1", ["%test%"]);
+    await cleanupTestDataUtil(db);
   } catch (error) {
     console.warn("Warning: Failed to cleanup test data:", error);
   }
@@ -91,8 +91,37 @@ beforeAll(async () => {
   process.env.REDDIT_CLIENT_ID = "test_client_id";
   process.env.REDDIT_CLIENT_SECRET = "test_client_secret";
   process.env.PING_MESSAGE = "test ping";
+  
+  // Set database URL for server endpoints
+  process.env.TEST_DATABASE_URL = getTestDatabaseUrl();
 
-  console.log("Backend test environment initialized");
+  // Initialize database if needed
+  if (!databaseInitialized) {
+    try {
+      console.log("🚀 Initializing test database...");
+      
+      // Automatically ensure database environment is ready
+      await ensureDatabaseEnvironment();
+      
+      const db = getTestDatabase();
+      
+      // Setup schema if needed (will only run if tables don't exist)
+      await setupTestDatabase(db);
+      
+      // Verify database is ready
+      await verifyTestDatabase(db);
+      
+      databaseInitialized = true;
+      console.log("✅ Test database initialization complete");
+    } catch (error) {
+      console.error("❌ Test database initialization failed:", error);
+      console.error("💡 Make sure you have a local PostgreSQL database running.");
+      console.error("💡 See tests/TEST_DATABASE_SETUP.md for setup instructions.");
+      throw error;
+    }
+  }
+
+  console.log("🧪 Backend test environment initialized");
 });
 
 afterAll(async () => {

@@ -17,21 +17,23 @@ function getDatabase(): Pool {
     return pool;
   }
 
-  const databaseUrl = process.env.DATABASE_URL;
+  // Use TEST_DATABASE_URL in test environment, otherwise DATABASE_URL
+  const databaseUrl = process.env.NODE_ENV === 'test' 
+    ? process.env.TEST_DATABASE_URL 
+    : process.env.DATABASE_URL;
   console.log("[DB] Database URL configured:", databaseUrl ? "YES" : "NO");
 
   if (!databaseUrl) {
-    console.error("[DB] DATABASE_URL environment variable is not set");
-    throw new Error("DATABASE_URL environment variable is not set");
+    const envVar = process.env.NODE_ENV === 'test' ? 'TEST_DATABASE_URL' : 'DATABASE_URL';
+    console.error(`[DB] ${envVar} environment variable is not set`);
+    throw new Error(`${envVar} environment variable is not set`);
   }
 
   try {
     console.log("[DB] Creating PostgreSQL connection pool...");
     pool = new Pool({
       connectionString: databaseUrl,
-      ssl: {
-        rejectUnauthorized: false // For Neon compatibility
-      },
+      ssl: databaseUrl.includes('neon.tech') ? { rejectUnauthorized: false } : false,
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
