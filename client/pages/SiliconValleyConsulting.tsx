@@ -300,7 +300,7 @@ export default function SiliconValleyConsulting() {
           </Card>
 
           {/* Info Section */}
-          <div className="mt-16 bg-blue-50 rounded-lg p-8 border border-blue-200">
+          <div className="mt-16 mb-16 bg-blue-50 rounded-lg p-8 border border-blue-200">
             <div className="text-center max-w-4xl mx-auto">
               <AlertTriangle className="w-12 h-12 text-blue-600 mx-auto mb-4" />
               <h3 className="text-2xl font-bold text-blue-900 mb-4">
@@ -308,7 +308,7 @@ export default function SiliconValleyConsulting() {
               </h3>
               <div className="space-y-4 text-blue-800">
                 <p>
-                  <strong>Step 1:</strong> Complete your first assignment with Silicon Valley Consulting to establish your reputation and work quality.
+                  <strong>Step 1:</strong> Complete your first assignment with your first match (Silicon Valley Consulting) to establish your reputation and work quality.
                 </p>
                 <p>
                   <strong>Step 2:</strong> Receive a positive review (4+ stars) from your initial company to unlock additional opportunities.
@@ -317,7 +317,7 @@ export default function SiliconValleyConsulting() {
                   <strong>Step 3:</strong> Browse and apply to work with multiple companies simultaneously, increasing your earning potential.
                 </p>
                 <p className="text-sm">
-                  This system ensures high-quality contractors and helps companies find reliable talent through proven track records.
+                  This system ensures high-quality part-ttime contractors and helps companies find reliable talent through proven track records.
                 </p>
               </div>
             </div>
