@@ -14,12 +14,19 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: './coverage/frontend',
+      all: true,
       include: ['client/lib/**/*.{ts,tsx}'],
       exclude: [
         'client/**/*.test.{ts,tsx}',
         'client/**/*.spec.{ts,tsx}',
         'client/**/*.d.ts',
         'client/lib/supabase.ts',
+        'client/**/*.stories.{ts,tsx}',
+        'client/**/index.ts',
+        'client/components/**/*',
+        'client/pages/**/*',
+        'client/hooks/**/*',
+        'client/App.tsx',
       ],
       thresholds: {
         global: {

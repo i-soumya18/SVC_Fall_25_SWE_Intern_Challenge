@@ -1,5 +1,5 @@
-const { execSync } = require('child_process');
-const fs = require('fs');
+import { execSync } from 'child_process';
+import fs from 'fs';
 
 /**
  * Ensures a local test Postgres is running for developer machines.
