@@ -25,7 +25,16 @@ export function createTestDatabaseUrl(config: TestDatabaseConfig): string {
  * Uses Docker PostgreSQL
  */
 export function getTestDatabaseUrl(): string {
-  // Use Docker config
+  // Allow CI or local overrides via env vars. Prefer TEST_DATABASE_URL, then DATABASE_URL.
+  if (process.env.TEST_DATABASE_URL) {
+    return process.env.TEST_DATABASE_URL;
+  }
+
+  if (process.env.DATABASE_URL && process.env.NODE_ENV === 'test') {
+    return process.env.DATABASE_URL;
+  }
+
+  // Default local Docker config
   return createTestDatabaseUrl({
     host: 'localhost',
     port: 5432,
@@ -55,32 +64,34 @@ export function createTestPool(databaseUrl?: string): Pool {
  * Ensures PostgreSQL is running (expects it to be started by pretest script)
  */
 export async function ensureDatabaseEnvironment(): Promise<void> {
-  // Try to connect to the Docker PostgreSQL
-  const config = {
-    host: 'localhost',
-    port: 5432,
-    database: 'postgres', // Connect to default database first
-    username: 'postgres',
-    password: 'postgres'
-  };
-  
+  // Prefer a full connection string from env (TEST_DATABASE_URL or DATABASE_URL).
+  const connectionString = process.env.TEST_DATABASE_URL || (process.env.DATABASE_URL && process.env.NODE_ENV === 'test' ? process.env.DATABASE_URL : undefined);
+
   try {
-    const testPool = new Pool({
-      host: config.host,
-      port: config.port,
-      database: config.database,
-      user: config.username,
-      password: config.password,
+    const poolOptions: any = {
+      connectionTimeoutMillis: 5000,
       ssl: false,
-      connectionTimeoutMillis: 5000
-    });
-    
+    };
+
+    if (connectionString) {
+      // Use connection string if present
+      poolOptions.connectionString = connectionString;
+    } else {
+      // Fallback to localhost defaults
+      poolOptions.host = 'localhost';
+      poolOptions.port = 5432;
+      poolOptions.database = 'postgres';
+      poolOptions.user = 'postgres';
+      poolOptions.password = 'postgres';
+    }
+
+    const testPool = new Pool(poolOptions);
     await testPool.query('SELECT 1');
     await testPool.end();
-    
+
     console.log('✅ PostgreSQL connection successful');
   } catch (error: any) {
-    console.error('❌ PostgreSQL not running or accessible:', error?.message);
+    console.error('❌ PostgreSQL not running or accessible:', error?.message || error);
     throw new Error('PostgreSQL database not available. Run `npm run test:db:setup` to start the test database.');
   }
 }
