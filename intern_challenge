@@ -1,0 +1,339 @@
+SVC Fall ’25 — SWE Intern Take-Home Challenge (Testing & CI)
+Overview
+You’ll work in a Vite/React + Express monorepo to:
+Reach 100% code coverage for frontend and backend.
+
+
+Write a short ReadMe report about the tests you found, what you added, issues faced & how you overcame them, and thoughts on the repo’s overall health (architecture, tech debt, testability).
+
+
+Set up GitHub Actions CI so we can clone and run your suite, headless, with coverage gates enforced.
+
+
+Repo you will fork: SVC_Fall_25_SWE_Intern_Challenge (monorepo with client, server, shared, tests/, vitest backend config, Netlify config, and a Reddit API setup guide). (GitHub)
+
+What We’re Evaluating
+Coverage: 100% lines/branches/functions/statements on both frontend and backend (coverage gates must fail <100%).
+
+
+Rigor: Edge cases, unhappy paths, and realistic integration tests (DB + HTTP).
+
+
+Reproducibility: npm test must automatically setup any required local SQL DB and run end-to-end without manual steps.
+
+
+CI: GitHub Actions runs the full suite on every push/PR and uploads coverage artifacts.
+
+
+Non-Test Code Changes: Think of this repo as production code. You shouldn't have to change or delete any of the production code (unless absolutely necessary) just to get 100% test coverage. If you absolutely have, then thoroughly explain why in the ReadMe.
+
+
+
+Allowed Aids
+Use any AI coding assistant you like. Cite anything notable you relied on in your ReadMe report (one short paragraph is plenty).
+
+
+
+Local Setup Expectations
+Node: Use Node 20.x LTS (add an .nvmrc if you like).
+
+
+Package manager: npm must work. (It’s fine if you use pnpm/yarn locally, but npm test must work out-of-the-box.)
+
+
+Environment: Add a .env.example with all required variables. Do not commit secrets. (Repo contains .env and a Reddit API guide; treat any committed .env as placeholder only.) (GitHub)
+
+
+External APIs: To get this dummy project working locally, they may need to sign up & create API keys for free services (e.g. Reddit free API, Neon, etc). You should have unit tests that mock external APIs, as well as integration tests that uses free API keys. The reviewers will use their own API keys, so don’t commit your API keys (GitHub)
+
+
+
+Database Requirement (Important)
+To achieve 100% coverage, some tests will depend on a local SQL database.
+
+
+Your npm test must automatically spin up and tear down the DB. If reviewers can’t run npm test from a clean clone, you may be auto-rejected.
+
+
+Acceptable approaches:
+
+
+Testcontainers (recommended): Spin up Postgres automatically from the test process (requires Docker on the reviewer machine).
+
+
+GitHub Actions service container: In CI, run Postgres via a service container; locally, still use Testcontainers/Docker.
+
+
+SQLite (file or in-memory): Only if your server layer is ORM-agnostic and parity with Postgres behavior is maintained. Explain tradeoffs in your ReadMe.
+
+Testing Stack Guidance
+Backend (Express): Vitest (repo includes vitest.config.backend.ts), plus supertest for HTTP; factories/fixtures for data; use NODE_ENV=test (GitHub)
+
+
+Frontend (Vite/React): Vitest + Testing Library + jsdom. Consider MSW to mock HTTP calls. No snapshot-only testing; assert behavior.
+
+
+Coverage Gates: Enforce 100% in config/CLI for statements, branches, lines, functions and include untested files (e.g., Vitest coverage: { all: true, thresholds: { ...100 } }).
+
+CI Requirements (GitHub Actions)
+Create .github/workflows/ci.yml that:
+Uses Ubuntu, Node 20.
+
+
+Checks out code and installs deps (cache node_modules).
+
+
+Brings up Postgres as a service (or your testcontainers flow).
+
+
+Runs backend tests then frontend tests (or a single mono-command that does both).
+
+
+Fails if coverage <100% on either side.
+
+
+Uploads coverage reports as artifacts.
+
+
+Example (starter) workflow:
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: app_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U test -d app_test"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      # If you run migrations/seed for tests, do it here or in a pretest script
+      - name: Run tests (backend + frontend)
+        run: npm test
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage
+            client/coverage
+            server/coverage
+
+If you prefer Testcontainers, you can drop the services.postgres block and let tests start Postgres on-demand. Make sure Docker is available on GitHub’s Ubuntu runner (it is).
+
+Minimum Scripts We Expect (suggested)
+Add these to package.json (or equivalent) so npm test works everywhere:
+"pretest": "node scripts/test-db-setup.js" — bring up DB (Testcontainers or docker-compose), apply migrations/seed.
+
+
+"test": "npm run test:backend && npm run test:frontend"
+
+
+"test:backend": "vitest --config vitest.config.backend.ts --coverage"
+
+
+"test:frontend": "vitest --config client/vitest.config.ts --coverage"
+
+
+"posttest": "node scripts/test-db-teardown.js" — optional if not auto-handled.
+
+
+Ensure coverage config fails below 100% on both suites.
+
+ReadMe Report (deliverable inside your fork)
+Create TESTING_REPORT.md at the repo root with:
+Original tests review
+
+
+What was covered well/poorly? Any flakiness or anti-patterns?
+
+
+What you added & why
+
+
+Bullet list of new tests (file/class/function/route), rationale, edge cases handled.
+
+
+Issues you faced & how you solved them
+
+
+The tricky parts (DB lifecycle, environment, async, mocking external APIs, etc.).
+
+
+Repo health assessment
+
+
+Architecture: Boundaries, coupling, single responsibility, shared code usage (shared/).
+
+
+Tech debt: Naming, dead code, config sprawl, committed artifacts (e.g., coverage/ should be ignored).
+
+
+Testability: Where seams are good/bad; easy wins to improve design for tests.
+
+
+How to run
+
+
+One-command local run (npm i && npm test). Note any optional tools (Docker) and alternates.
+
+
+The repo includes client, server, shared, tests/, netlify/, netlify.toml, REDDIT_API_SETUP.md, and a backend Vitest config—use this to inform your plan. (GitHub)
+
+Submission Instructions
+Make your fork public.
+
+
+Ensure GitHub Actions CI is green on your default branch.
+
+
+Email your repo URL to Stephanie McGhee at Stephanie.mcghee@siliconvalleyconsulting.io with subject:
+ “SWE Intern — Testing Challenge — <Your Name>”.
+
+
+In the email body, include:
+
+
+Link to your TESTING_REPORT.md.
+
+
+Any notes on production code changes you deemed absolutely necessary (with file paths and rationale).
+
+
+
+Ground Rules & Constraints
+Treat this like production. Don’t change or delete production code unless it’s truly necessary for correctness or testability; if you must, keep changes minimal and explained in your report.
+
+
+Reproducibility matters. Reviewers will clone and run npm test on macOS/Linux. Assume Docker is available; if you require it, say so clearly.
+
+
+Environment keys: You may need free keys for local manual runs (e.g., Reddit, Neon). Provide .env.example with instructions. Do not commit secrets. (GitHub)
+
+
+
+Evaluation Rubric (100 pts)
+Coverage: 100% enforced on FE + BE; includes unreferenced files; no exclusions to game the metric.
+
+
+Test Quality: Edge cases, negative paths, integration with DB; meaningful assertions.
+
+
+Reproducibility: One-command setup, hermetic tests, clean teardown.
+
+
+CI: Solid GitHub Actions flow; artifacts; clear failure on <100%.
+
+
+ReadMe Report: Clear, concise, insightful.
+
+
+Craft: Commit hygiene, structure, small diffs, naming.
+
+
+Bonus (up to +5): Useful refactors that improve testability without changing behavior (with justification).
+
+FAQ & Clarifications
+Q1: Do I have to use the exact same tools already present?
+ No. You can choose equivalent tools, but coverage gates and npm test automation are mandatory. The repo currently uses Vite + Vitest (including a backend Vitest config), so sticking with Vitest is simplest. (GitHub)
+Q2: Can I hit Reddit/other APIs in tests?
+ We expect both unit tests (i.e. mocking APIs) and integration tests (i.e. hitting APIs). Also see REDDIT_API_SETUP.md (GitHub)
+Q3: Do I need Netlify?
+ The repo has netlify/ and netlify.toml, but your tests and CI must not depend on Netlify. Local + CI test runs should be independent. (GitHub)
+Q4: Which DB should I use?
+ Use Postgres via Testcontainers or a GitHub Actions service container, unless you can justify a fully equivalent SQLite test mode. The key requirement is automatic, hermetic DB provisioning during npm test.
+Q5: Coverage artifacts and badges?
+ Upload coverage reports in CI; a badge is optional. If you add one, keep it consistent with enforced 100%.
+
+Small Repo Observations (so you’re not surprised)
+Monorepo layout with client/, server/, shared/, tests/, plus a backend Vitest config (vitest.config.backend.ts). Ensure both FE + BE suites run and report separately or combined—either is fine if both hit 100%. (GitHub)
+
+
+Reddit setup doc exists (GitHub)
+
+
+Netlify config is present—ignore it for testing/CI purposes. (GitHub)
+
+
+A coverage/ directory appears in the repo listing; coverage outputs generally shouldn’t be committed. You may add coverage/ to .gitignore in your fork (this is tooling, not “production code”). (GitHub)
+
+
+
+Minimal Checklists
+Coverage Gates
+FE coverage thresholds = 100% (statements/branches/functions/lines) and all: true.
+
+
+BE coverage thresholds = 100% and all: true.
+
+
+CI fails if any suite <100%.
+
+
+DB Automation
+npm test brings up DB (Testcontainers or service container).
+
+
+Migrations/seed run automatically for NODE_ENV=test.
+
+
+Tests clean up after themselves.
+
+
+Mocking for Unit Tests
+No real network in tests (MSW for FE; nock/undici mocks for BE).
+
+
+Deterministic fixtures (avoid time randomness; if needed, freeze time).
+
+
+CI
+Actions workflow runs on push/PR.
+
+
+Uploads coverage artifacts.
+
+
+Green build on your main branch.
+
+
+ReadMe Report
+Original tests review
+
+
+What you added & why
+
+
+Issues & fixes
+
+
+Repo health (architecture, tech debt, testability)
+
+
+One-command run instructions
+
+
+
+Submit to:
+Stephanie McGhee — Stephanie.mcghee@siliconvalleyconsulting.io

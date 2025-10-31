@@ -4,7 +4,7 @@ import * as path from 'path';
 
 /**
  * Database setup utilities for local testing
- * Handles both Docker PostgreSQL and native PostgreSQL installations
+ * Uses Docker PostgreSQL
  */
 
 export interface TestDatabaseConfig {
@@ -14,31 +14,6 @@ export interface TestDatabaseConfig {
   username: string;
   password: string;
 }
-
-// Default local database configurations
-export const DEFAULT_TEST_DB_CONFIGS = {
-  // Docker PostgreSQL (recommended)
-  docker: {
-    host: 'localhost',
-    port: 5432,
-    database: 'fairdatause_test',
-    username: 'postgres',
-    password: 'postgres'
-  },
-  
-  // Native PostgreSQL installation
-  native: {
-    host: 'localhost',
-    port: 5432,
-    database: 'fairdatause_test',
-    username: process.env.USER || 'postgres',
-    password: ''
-  }
-};
-
-/**
- * Creates a test database connection string from config
- */
 export function createTestDatabaseUrl(config: TestDatabaseConfig): string {
   const { host, port, database, username, password } = config;
   const auth = password ? `${username}:${password}` : username;
@@ -47,22 +22,17 @@ export function createTestDatabaseUrl(config: TestDatabaseConfig): string {
 
 /**
  * Gets the appropriate test database URL
- * Priority: TEST_DATABASE_URL > Docker config > Native config
+ * Uses Docker PostgreSQL
  */
 export function getTestDatabaseUrl(): string {
-  // 1. Check for explicit test database URL
-  if (process.env.TEST_DATABASE_URL) {
-    return process.env.TEST_DATABASE_URL;
-  }
-
-  // 2. Check for production DATABASE_URL in test mode (use with caution)
-  if (process.env.DATABASE_URL && process.env.NODE_ENV === 'test') {
-    console.warn('⚠️  Using production DATABASE_URL for tests. Make sure this is a test database!');
-    return process.env.DATABASE_URL;
-  }
-
-  // 3. Default to Docker config
-  return createTestDatabaseUrl(DEFAULT_TEST_DB_CONFIGS.docker);
+  // Use Docker config
+  return createTestDatabaseUrl({
+    host: 'localhost',
+    port: 5432,
+    database: 'fairdatause_test',
+    username: 'postgres',
+    password: 'postgres'
+  });
 }
 
 /**
@@ -82,23 +52,27 @@ export function createTestPool(databaseUrl?: string): Pool {
 }
 
 /**
- * Ensures PostgreSQL is installed and running, creates database if needed
+ * Ensures PostgreSQL is running (expects it to be started by pretest script)
  */
 export async function ensureDatabaseEnvironment(): Promise<void> {
-  // First, try to check if PostgreSQL is accessible
-  let needsInstallation = false;
+  // Try to connect to the Docker PostgreSQL
+  const config = {
+    host: 'localhost',
+    port: 5432,
+    database: 'postgres', // Connect to default database first
+    username: 'postgres',
+    password: 'postgres'
+  };
   
   try {
-    // Try to connect to the default postgres database
-    const config = DEFAULT_TEST_DB_CONFIGS.docker;
     const testPool = new Pool({
       host: config.host,
       port: config.port,
-      database: 'postgres',
-      user: config.username, 
+      database: config.database,
+      user: config.username,
       password: config.password,
       ssl: false,
-      connectionTimeoutMillis: 3000
+      connectionTimeoutMillis: 5000
     });
     
     await testPool.query('SELECT 1');
@@ -106,156 +80,8 @@ export async function ensureDatabaseEnvironment(): Promise<void> {
     
     console.log('✅ PostgreSQL connection successful');
   } catch (error: any) {
-    if (error?.code === '28000') {
-      // Role doesn't exist - we have PostgreSQL but need to set it up
-      console.log('🔧 PostgreSQL found but needs user setup...');
-      await ensurePostgreSQLUser();
-    } else if (error?.code === 'ECONNREFUSED') {
-      // Connection refused - PostgreSQL not running or not installed
-      needsInstallation = true;
-    } else {
-      console.warn('Database connection issue:', error?.message);
-      needsInstallation = true;
-    }
-  }
-  
-  if (needsInstallation) {
-    await installPostgreSQL();
-    await ensurePostgreSQLUser();
-  }
-  
-  // Ensure test database exists
-  await ensureTestDatabase();
-}
-
-/**
- * Automatically installs PostgreSQL if not available
- */
-async function installPostgreSQL(): Promise<void> {
-  console.log('📦 PostgreSQL not found, attempting to install...');
-  
-  const os = require('os');
-  const { execSync } = require('child_process');
-  
-  try {
-    if (os.platform() === 'darwin') {
-      // macOS - try homebrew
-      console.log('🍺 Installing PostgreSQL via Homebrew...');
-      execSync('brew install postgresql@15', { stdio: 'inherit' });
-      execSync('brew services start postgresql@15', { stdio: 'inherit' });
-      
-      // Wait a moment for service to start
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      console.log('✅ PostgreSQL installed and started');
-    } else if (os.platform() === 'linux') {
-      // Linux - try apt
-      console.log('🐧 Installing PostgreSQL via apt...');
-      execSync('sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib', { stdio: 'inherit' });
-      execSync('sudo systemctl start postgresql', { stdio: 'inherit' });
-      
-      console.log('✅ PostgreSQL installed and started');
-    } else {
-      throw new Error('Automatic PostgreSQL installation not supported on this platform');
-    }
-  } catch (error) {
-    console.warn('⚠️  Could not auto-install PostgreSQL:', error);
-    throw new Error('Please install PostgreSQL manually or use Docker: npm run test:db:setup');
-  }
-}
-
-/**
- * Ensures the postgres user exists and can create databases
- */
-async function ensurePostgreSQLUser(): Promise<void> {
-  const os = require('os');
-  const { execSync } = require('child_process');
-  
-  try {
-    if (os.platform() === 'darwin') {
-      // macOS - create postgres user if needed
-      console.log('👤 Setting up PostgreSQL user...');
-      
-      // Find PostgreSQL installation
-      let createUserCmd = 'createuser';
-      let createDbCmd = 'createdb';
-      
-      try {
-        // Try to find PostgreSQL via Homebrew
-        const pgPath = execSync('brew --prefix postgresql@15', { encoding: 'utf8' }).trim();
-        createUserCmd = `${pgPath}/bin/createuser`;
-        createDbCmd = `${pgPath}/bin/createdb`;
-      } catch {
-        // Fallback to system PATH
-        console.log('Using system PostgreSQL commands');
-      }
-      
-      try {
-        // Try to create postgres role
-        execSync(`${createUserCmd} -s postgres`, { stdio: 'pipe' });
-        console.log('✅ postgres user created');
-      } catch (error: any) {
-        // User might already exist
-        if (error.stderr?.includes('already exists')) {
-          console.log('✅ postgres user already exists');
-        } else {
-          console.warn('User creation issue:', error.message);
-        }
-      }
-      
-      try {
-        // Try to create database if it doesn't exist
-        execSync(`${createDbCmd} postgres`, { stdio: 'pipe' });
-        console.log('✅ postgres database created');
-      } catch (error: any) {
-        // Database might already exist
-        if (error.stderr?.includes('already exists')) {
-          console.log('✅ postgres database already exists');
-        } else {
-          console.warn('Database creation issue:', error.message);
-        }
-      }
-      
-    } else if (os.platform() === 'linux') {
-      // Linux - usually postgres user is created automatically
-      console.log('👤 PostgreSQL user should be available on Linux');
-    }
-  } catch (error) {
-    console.warn('⚠️  Could not setup PostgreSQL user:', error);
-    console.log('💡 You may need to manually run: createuser -s postgres');
-  }
-}
-
-/**
- * Creates the test database if it doesn't exist
- */
-async function ensureTestDatabase(): Promise<void> {
-  const config = DEFAULT_TEST_DB_CONFIGS.docker;
-  
-  // Try to connect to postgres database first to create our test database
-  const adminPool = new Pool({
-    host: config.host,
-    port: config.port,
-    database: 'postgres', // Connect to default postgres database
-    user: config.username,
-    password: config.password,
-    ssl: false
-  });
-
-  try {
-    // Check if test database exists
-    const result = await adminPool.query(
-      "SELECT 1 FROM pg_database WHERE datname = $1",
-      [config.database]
-    );
-
-    if (result.rows.length === 0) {
-      console.log(`🏗️  Creating test database: ${config.database}`);
-      await adminPool.query(`CREATE DATABASE "${config.database}"`);
-      console.log('✅ Test database created successfully');
-    }
-  } finally {
-    await adminPool.end();
+    console.error('❌ PostgreSQL not running or accessible:', error?.message);
+    throw new Error('PostgreSQL database not available. Run `npm run test:db:setup` to start the test database.');
   }
 }
 

@@ -6,6 +6,7 @@ export default defineConfig({
     name: 'backend',
     environment: 'node',
     globals: true,
+    include: ['tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
@@ -18,10 +19,10 @@ export default defineConfig({
       ],
       thresholds: {
         global: {
-          branches: 80,
-          functions: 80,
-          lines: 80,
-          statements: 80,
+          branches: 100,
+          functions: 100,
+          lines: 100,
+          statements: 100,
         },
       },
     },
