@@ -37,7 +37,7 @@ jobs:
 
     - name: Wait for PostgreSQL
       run: |
-        until pg_isready -h localhost -p 5432 -U postgres; do
+        until pg_isready -h postgres -p 5432 -U postgres; do
           echo "Waiting for PostgreSQL..."
           sleep 2
         done
@@ -47,8 +47,8 @@ jobs:
       run: npx vitest --config vitest.config.backend.ts --run --coverage
       env:
         NODE_ENV: test
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fairdatause_test
-        TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fairdatause_test
+        DATABASE_URL: postgresql://postgres:postgres@postgres:5432/fairdatause_test
+        TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/fairdatause_test
 
     - name: Run frontend tests
       run: npx vitest --config vitest.config.ts --run --coverage
