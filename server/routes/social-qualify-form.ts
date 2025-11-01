@@ -8,9 +8,32 @@ import {
 
 let pool: Pool | null = null;
 
+// Function to reset the database connection pool (for testing)
+export function resetConnectionPool(): void {
+  if (pool) {
+    pool.end().catch(() => {}); // Close existing pool, ignore errors
+    pool = null;
+  }
+}
+
 // PostgreSQL connection
 function getDatabase(): Pool {
   console.log("[DB] Getting database connection...");
+
+  const currentDatabaseUrl = process.env.NODE_ENV === 'test' 
+    ? process.env.TEST_DATABASE_URL 
+    : process.env.DATABASE_URL;
+
+  // If we have an existing pool but the current environment has a valid URL
+  // and the pool might be using an invalid URL, check and reset if needed
+  if (pool && currentDatabaseUrl && !currentDatabaseUrl.includes('not-a-real-database-url')) {
+    // Try to get a test connection to see if the pool is healthy
+    // If it fails, we likely have a pool with an invalid URL that needs reset
+    pool.query('SELECT 1').catch(() => {
+      console.log("[DB] Existing pool appears unhealthy, resetting connection pool");
+      resetConnectionPool();
+    });
+  }
 
   if (pool) {
     console.log("[DB] Using existing connection pool");
@@ -18,9 +41,7 @@ function getDatabase(): Pool {
   }
 
   // Use TEST_DATABASE_URL in test environment, otherwise DATABASE_URL
-  const databaseUrl = process.env.NODE_ENV === 'test' 
-    ? process.env.TEST_DATABASE_URL 
-    : process.env.DATABASE_URL;
+  const databaseUrl = currentDatabaseUrl;
   console.log("[DB] Database URL configured:", databaseUrl ? "YES" : "NO");
 
   if (!databaseUrl) {
@@ -47,6 +68,14 @@ function getDatabase(): Pool {
   }
 }
 
+// Custom error class for missing Reddit credentials
+class RedditCredentialsError extends Error {
+  constructor(missing: string[]) {
+    super(`Missing Reddit API credentials: ${missing.join(', ')}`);
+    this.name = 'RedditCredentialsError';
+  }
+}
+
 // Reddit API integration
 async function verifyRedditAccount(username: string): Promise<boolean> {
   console.log(`[REDDIT] Verifying Reddit account: ${username}`);
@@ -63,16 +92,18 @@ async function verifyRedditAccount(username: string): Promise<boolean> {
 
     if (!clientId || !clientSecret) {
       console.error("[REDDIT] ❌ REDDIT API CREDENTIALS NOT CONFIGURED ❌");
-      console.error(
-        "[REDDIT] Missing:",
-        !clientId ? "REDDIT_CLIENT_ID" : "",
-        !clientSecret ? "REDDIT_CLIENT_SECRET" : "",
-      );
+      const missing = [];
+      if (!clientId) missing.push("REDDIT_CLIENT_ID");
+      if (!clientSecret) missing.push("REDDIT_CLIENT_SECRET");
+      
+      console.error("[REDDIT] Missing:", missing.join(", "));
       console.error(
         "[REDDIT] Reddit verification will fail for all users until credentials are set",
       );
       console.error("[REDDIT] See REDDIT_API_SETUP.md for instructions");
-      return false;
+      
+      // Throw specific error for missing credentials
+      throw new RedditCredentialsError(missing);
     }
 
     // Get Reddit OAuth token
@@ -121,7 +152,13 @@ async function verifyRedditAccount(username: string): Promise<boolean> {
       `[REDDIT] User '${username}' verification result: ${verified ? "VERIFIED" : "NOT FOUND"}`,
     );
     return verified;
-  } catch (error) {
+  } catch (error: any) {
+    // Re-throw RedditCredentialsError to be handled by calling code
+    if (error instanceof RedditCredentialsError) {
+      throw error;
+    }
+    
+    // Log and return false for other errors (actual Reddit API failures)
     console.error(
       `[REDDIT] Error verifying Reddit account '${username}':`,
       error,
@@ -289,12 +326,24 @@ export const handleSocialQualifyForm: RequestHandler = async (req, res) => {
 
     // Verify Reddit account
     console.log("[API] Starting Reddit account verification...");
-    const redditVerified = await verifyRedditAccount(
-      validatedData.redditUsername,
-    );
-    console.log(
-      `[API] Reddit verification completed. Verified: ${redditVerified}`,
-    );
+    let redditVerified = false;
+    try {
+      redditVerified = await verifyRedditAccount(validatedData.redditUsername);
+      console.log(
+        `[API] Reddit verification completed. Verified: ${redditVerified}`,
+      );
+    } catch (error) {
+      if (error instanceof RedditCredentialsError) {
+        console.error("[API] Reddit credentials missing:", error.message);
+        return res.status(400).json({
+          success: false,
+          message: "Reddit API credentials are not configured properly",
+          error: error.message,
+        } as SocialQualifyResponse);
+      }
+      // Re-throw other errors to be handled by outer catch block
+      throw error;
+    }
 
     // Return error if Reddit account doesn't exist
     if (!redditVerified) {

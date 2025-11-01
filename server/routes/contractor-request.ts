@@ -8,6 +8,14 @@ import {
 
 let pool: Pool | null = null;
 
+// Function to reset the database connection pool (for testing)
+export function resetConnectionPool(): void {
+  if (pool) {
+    pool.end().catch(() => {}); // Close existing pool, ignore errors
+    pool = null;
+  }
+}
+
 // PostgreSQL connection
 function getDatabase(): Pool {
   console.log("[DB] Getting database connection...");

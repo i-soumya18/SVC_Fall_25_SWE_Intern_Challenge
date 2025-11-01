@@ -168,7 +168,7 @@ describe('Database Error Handling', () => {
 describe('Reddit API Error Handling', () => {
   let originalEnv: Record<string, string | undefined>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Save original environment
     originalEnv = {
       REDDIT_CLIENT_ID: process.env.REDDIT_CLIENT_ID,
@@ -179,7 +179,25 @@ describe('Reddit API Error Handling', () => {
 
     // Ensure test environment with valid database URL
     process.env.NODE_ENV = 'test';
-    process.env.TEST_DATABASE_URL = originalEnv.TEST_DATABASE_URL;
+    // Make sure we have a valid test database URL (in case previous tests modified it)
+    if (!process.env.TEST_DATABASE_URL || process.env.TEST_DATABASE_URL.includes('not-a-real-database-url')) {
+      // Import the test database setup to get the correct URL
+      const { getTestDatabaseUrl } = require('./test-db-setup');
+      process.env.TEST_DATABASE_URL = getTestDatabaseUrl();
+    }
+
+    // Reset database connection pools to force them to use new environment variables
+    try {
+      const { resetConnectionPool: resetSocialFormPool } = require('../server/routes/social-qualify-form');
+      const { resetConnectionPool: resetContractorPool } = require('../server/routes/contractor-request');
+      resetSocialFormPool();
+      resetContractorPool();
+      
+      // Give a small delay to ensure connection pools are reset
+      await new Promise(resolve => setTimeout(resolve, 10));
+    } catch (error) {
+      // Ignore errors if modules aren't loaded yet
+    }
   });
 
   afterEach(() => {
@@ -198,6 +216,7 @@ describe('Reddit API Error Handling', () => {
     delete process.env.REDDIT_CLIENT_ID;
     delete process.env.REDDIT_CLIENT_SECRET;
 
+    // Create a fresh app instance to ensure clean state
     const app = createServer();
 
     const response = await request(app)
@@ -211,7 +230,8 @@ describe('Reddit API Error Handling', () => {
 
     expect(response.body).toEqual({
       success: false,
-      message: expect.stringContaining('does not exist')
+      message: 'Reddit API credentials are not configured properly',
+      error: 'Missing Reddit API credentials: REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET'
     });
   });
 
@@ -220,6 +240,7 @@ describe('Reddit API Error Handling', () => {
     delete process.env.REDDIT_CLIENT_ID;
     process.env.REDDIT_CLIENT_SECRET = 'test_secret';
 
+    // Create a fresh app instance to ensure clean state
     const app = createServer();
 
     const response = await request(app)
@@ -233,7 +254,8 @@ describe('Reddit API Error Handling', () => {
 
     expect(response.body).toEqual({
       success: false,
-      message: expect.stringContaining('does not exist')
+      message: 'Reddit API credentials are not configured properly',
+      error: 'Missing Reddit API credentials: REDDIT_CLIENT_ID'
     });
   });
 
@@ -242,6 +264,7 @@ describe('Reddit API Error Handling', () => {
     process.env.REDDIT_CLIENT_ID = 'test_id';
     delete process.env.REDDIT_CLIENT_SECRET;
 
+    // Create a fresh app instance to ensure clean state
     const app = createServer();
 
     const response = await request(app)
@@ -255,7 +278,8 @@ describe('Reddit API Error Handling', () => {
 
     expect(response.body).toEqual({
       success: false,
-      message: expect.stringContaining('does not exist')
+      message: 'Reddit API credentials are not configured properly',
+      error: 'Missing Reddit API credentials: REDDIT_CLIENT_SECRET'
     });
   });
 });
