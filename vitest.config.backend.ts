@@ -7,6 +7,12 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: ['tests/**/*.test.ts'],
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
@@ -17,6 +23,7 @@ export default defineConfig({
         'server/**/*.test.ts',
         'server/**/*.spec.ts',
         'server/node-build.ts',
+        'server/routes/test-mongo.ts', // Unused route, not registered in server
       ],
       thresholds: {
         global: {

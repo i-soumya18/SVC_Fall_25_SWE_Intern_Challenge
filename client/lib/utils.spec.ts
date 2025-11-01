@@ -29,4 +29,48 @@ describe("cn function", () => {
       "base conditional",
     );
   });
+
+  it("should handle undefined values", () => {
+    expect(cn("base", undefined, "valid")).toBe("base valid");
+  });
+
+  it("should handle empty strings", () => {
+    expect(cn("", "valid", "")).toBe("valid");
+  });
+
+  it("should handle arrays of classes", () => {
+    expect(cn(["class1", "class2"], "class3")).toBe("class1 class2 class3");
+  });
+
+  it("should handle complex combinations", () => {
+    const result = cn(
+      "base",
+      { "active": true, "disabled": false },
+      ["extra1", "extra2"],
+      undefined,
+      "final"
+    );
+    expect(result).toContain("base");
+    expect(result).toContain("active");
+    expect(result).not.toContain("disabled");
+    expect(result).toContain("extra1");
+    expect(result).toContain("extra2");
+    expect(result).toContain("final");
+  });
+
+  it("should return empty string when no valid classes provided", () => {
+    expect(cn(undefined, null, false, "")).toBe("");
+  });
+
+  it("should handle multiple conflicting Tailwind classes", () => {
+    expect(cn("text-sm", "text-lg")).toBe("text-lg");
+    expect(cn("p-4", "p-2", "p-6")).toBe("p-6");
+  });
+
+  it("should preserve non-conflicting classes when merging", () => {
+    const result = cn("hover:bg-blue-500", "focus:ring-2", "hover:bg-red-500");
+    expect(result).toContain("focus:ring-2");
+    expect(result).toContain("hover:bg-red-500");
+    expect(result).not.toContain("hover:bg-blue-500");
+  });
 });

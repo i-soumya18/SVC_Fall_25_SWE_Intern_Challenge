@@ -52,6 +52,10 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+-- Drop triggers if they exist before recreating
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
+DROP TRIGGER IF EXISTS update_contractors_updated_at ON contractors;
+
 CREATE TRIGGER update_users_updated_at 
     BEFORE UPDATE ON users 
     FOR EACH ROW 
